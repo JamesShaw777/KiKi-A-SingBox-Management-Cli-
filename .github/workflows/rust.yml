@@ -1,0 +1,38 @@
+name: Release kiki binary (Linux only)
+
+on:
+  push:
+    tags:
+      - "v*"             # 只在 v開頭的 tag 觸發 release
+
+permissions:
+  contents: write        # 必要權限：才能建立/更新 Release + 上傳檔案
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (with musl target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Build release binary (musl)
+        run: cargo build --release --target x86_64-unknown-linux-musl --verbose
+
+      - name: Strip binary (減小檔案大小，可選但推薦)
+        run: |
+          strip --strip-all target/x86_64-unknown-linux-musl/release/kiki || true
+
+      - name: Upload binary to GitHub Release
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: kiki
+          target: x86_64-unknown-linux-musl
+          archive: tar.gz              # 壓成 tar.gz（推薦），也可改 zip
+          checksum: sha256,best        # 自動產生 .sha256sum 檔案
+          token: ${{ secrets.GITHUB_TOKEN }}
