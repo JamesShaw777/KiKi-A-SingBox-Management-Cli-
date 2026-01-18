@@ -34,5 +34,5 @@ jobs:
           bin: kiki
           target: x86_64-unknown-linux-musl
           archive: tar.gz              # 壓成 tar.gz（推薦），也可改 zip
-          checksum: sha256,best        # 自動產生 .sha256sum 檔案
+          checksum: sha256       # 自動產生 .sha256sum 檔案
           token: ${{ secrets.GITHUB_TOKEN }}
