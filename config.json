@@ -2,37 +2,41 @@
   "dns": {
     "servers": [
       {
+        "server": "1.1.1.1",
         "tag": "google",
-        "type": "tls",
-        "server": "8.8.8.8"
+        "type": "tls"
       },
       {
+        "server": "223.5.5.5",
         "tag": "local",
-        "type": "https",
-        "server": "223.5.5.5"
+        "type": "udp"
       }
     ],
     "rules": [
-      {
-        "rule_set": "geosite-geolocation-cn",
-        "server": "local"
-      },
-      {
-        "type": "logical",
-        "mode": "and",
-        "rules": [
-          {
-            "rule_set": "geosite-geolocation-!cn",
-            "invert": true
-          },
-          {
-            "rule_set": "geoip-cn"
-          }
-        ],
-        "server": "local"
-      }
-    ]
+      { "rule_set": "geosite-geolocation-cn", "server": "local" },
+      { "server": "google" }
+    ],
+    "final": "google",
+    "strategy": "ipv4_only"
   },
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "store_rdrc": true
+    },
+    "clash_api": {
+      "default_mode": "Enhanced"
+    }
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "address": ["172.19.0.1/30"],
+      "auto_route": true,
+      "auto_redirect": true,
+      "strict_route": true
+    }
+  ],
   "outbounds": [
     {
       "type": "shadowsocks",
@@ -43,62 +47,50 @@
       "password": "your_password"
     },
     {
-      "type": "direct",
-      "tag": "direct"
-    }
-  ],
-  "inbounds": [
-    {
-      "type": "tun",
-      "address": ["172.19.0.1/30"],
-      "auto_route": true,
-      "strict_route": true
+      "tag": "direct",
+      "type": "direct"
     }
   ],
   "route": {
-    "rules": [
-      {
-        "protocol": "dns",
-        "outbound": "dns-out"
-      },
-      {
-        "rule_set": ["geosite-geolocation-cn", "geoip-cn"],
-        "outbound": "direct"
-      },
-      {
-        "ip_is_private": true,
-        "outbound": "direct"
-      }
-    ],
-    "default_domain_resolver": "local",
     "rule_set": [
       {
-        "type": "remote",
-        "tag": "geosite-geolocation-cn",
         "format": "binary",
+        "tag": "geosite-geolocation-cn",
+        "type": "remote",
         "url": "https://cdn.gh-proxy.org/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-cn.srs"
       },
       {
-        "type": "remote",
-        "tag": "geosite-geolocation-!cn",
         "format": "binary",
+        "tag": "geosite-geolocation-!cn",
+        "type": "remote",
         "url": "https://cdn.gh-proxy.org/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs"
       },
       {
-        "type": "remote",
-        "tag": "geoip-cn",
         "format": "binary",
+        "tag": "geoip-cn",
+        "type": "remote",
         "url": "https://cdn.gh-proxy.org/https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs"
       }
-    ]
-  },
-  "experimental": {
-    "cache_file": {
-      "enabled": true,
-      "store_rdrc": true
-    },
-    "clash_api": {
-      "default_mode": "Enhanced"
-    }
+    ],
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "outbound": "direct",
+        "rule_set": ["geosite-geolocation-cn", "geoip-cn"]
+      },
+      {
+        "outbound": "proxy",
+        "rule_set": ["geosite-geolocation-!cn"]
+      }
+    ],
+    "final": "proxy",
+    "default_domain_resolver": "local",
+    "auto_detect_interface": true
   }
 }
