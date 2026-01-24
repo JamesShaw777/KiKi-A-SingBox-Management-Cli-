@@ -66,13 +66,13 @@ sudo kiki set "vless://uuid@example.com:443?security=tls&sni=example.com"
 **Hysteria2 节点：**
 
 ```bash
-sudo kiki set "hysteria2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com&insecure=1&obfs=salamander&obfs-password="
+sudo kiki set "hysteria2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com&insecure=1&obfs=salamander"
 ```
 
 或使用 `hy2://` 前缀：
 
 ```bash
-sudo kiki set "hy2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com&insecure=1"
+sudo kiki set "hy2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com"
 ```
 
 ### 3. 管理服务状态
