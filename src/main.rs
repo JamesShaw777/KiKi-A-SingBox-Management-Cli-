@@ -22,6 +22,12 @@ enum Commands {
     Stop,
     /// 重启服务
     Restart,
+    /// 查看 sing-box 日志
+    Logs {
+        /// 实时跟踪新日志
+        #[arg(short, long)]
+        follow: bool,
+    },
 }
 
 fn main() {
@@ -37,5 +43,6 @@ fn main() {
         Commands::Start => commands::service::start(),
         Commands::Stop => commands::service::stop(),
         Commands::Restart => commands::service::restart(),
+        Commands::Logs { follow } => commands::logs::execute(*follow),
     }
 }

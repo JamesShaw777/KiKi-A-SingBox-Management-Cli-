@@ -37,10 +37,42 @@ sudo kiki check
 
 ### 2. 设置代理节点
 
-复制你的 Shadowsocks 订阅链接并运行：
+KiKi 支持多种代理协议。复制你的订阅链接并运行：
+
+**Shadowsocks 节点：**
 
 ```bash
-sudo kiki set "ss://YWVzLTI1Ni1jZmI6S1NYTmhuWnBqd0M2UGM2Q0A1NC4xNjkuMzUuMjI4OjMxNDQ0"
+sudo kiki set "ss://YWVzLTI1Ni1jZmI6S1NYTmhuWnBqd0M2UGM2Q0E1NC4xNjkuMzUuMjI4OjMxNDQ0"
+```
+
+**VMess 节点：**
+
+```bash
+sudo kiki set "vmess://ew0KICAidiI6ICIyIiwNCiAgInBzIjogIk5MIiwNCiAgImFkZCI6ICJoZWFydGJlYXQueXl5ZC5kZSIsDQogICJwb3J0IjogIjE0Njc4IiwNCiAgImlkIjogIjJkMzZlNDdhLTZjNjctNDUzNC1mYTNmLWIyYjQ2ZjJlMzNmMSINCn0="
+```
+
+**Trojan 节点：**
+
+```bash
+sudo kiki set "trojan://password@example.com:443"
+```
+
+**VLESS 节点：**
+
+```bash
+sudo kiki set "vless://uuid@example.com:443?security=tls&sni=example.com"
+```
+
+**Hysteria2 节点：**
+
+```bash
+sudo kiki set "hysteria2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com&insecure=1&obfs=salamander&obfs-password="
+```
+
+或使用 `hy2://` 前缀：
+
+```bash
+sudo kiki set "hy2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com&insecure=1"
 ```
 
 ### 3. 管理服务状态
@@ -50,6 +82,22 @@ sudo kiki start    # 启动 sing-box
 sudo kiki restart  # 重启以应用配置更改
 sudo kiki stop     # 停止服务
 ```
+
+### 4. 查看日志
+
+查看最近的 sing-box 日志：
+
+```bash
+sudo kiki logs
+```
+
+实时跟踪新日志（类似 `tail -f`）：
+
+```bash
+sudo kiki logs -f
+```
+
+按 `Ctrl+C` 退出实时跟踪模式。
 
 ## 📂 项目结构
 

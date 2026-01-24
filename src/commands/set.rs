@@ -1,9 +1,26 @@
 use std::fs;
-use serde_json::Value;
+use serde_json::{Value, json};
 use base64::{engine::general_purpose, Engine as _};
 use std::error::Error;
+use std::collections::HashMap;
 
 pub fn execute(url: &str) -> Result<(), Box<dyn Error>> {
+    if url.starts_with("ss://") {
+        handle_shadowsocks(url)
+    } else if url.starts_with("vmess://") {
+        handle_vmess(url)
+    } else if url.starts_with("trojan://") {
+        handle_trojan(url)
+    } else if url.starts_with("vless://") {
+        handle_vless(url)
+    } else if url.starts_with("hy2://") || url.starts_with("hysteria2://") {
+        handle_hysteria2(url)
+    } else {
+        Err("不支持的协议，请提供 ss://, vmess://, trojan://, vless://, hy2:// 或 hysteria2:// 链接".into())
+    }
+}
+
+fn handle_shadowsocks(url: &str) -> Result<(), Box<dyn Error>> {
     // 1. 处理基础字符串
     let mut main_part = url.trim_start_matches("ss://")
         .split('#') // 彻底切除 #tag
@@ -55,18 +72,98 @@ pub fn execute(url: &str) -> Result<(), Box<dyn Error>> {
     let server = addr_parts[1];
     let port = addr_parts[0].parse::<u16>()?;
 
-    // 5. 填充配置文件 (逻辑保持不变)
-    update_config(method, password, server, port)
+    // 5. 填充配置文件
+    update_shadowsocks_config(method, password, server, port)
 }
 
-fn update_config(method: &str, pass: &str, host: &str, port: u16) -> Result<(), Box<dyn Error>> {
+fn handle_vmess(url: &str) -> Result<(), Box<dyn Error>> {
+    // 1. 提取 base64 部分（去掉 vmess:// 前缀和 #tag）
+    let mut encoded_part = url.trim_start_matches("vmess://")
+        .split('#')
+        .next()
+        .unwrap_or("")
+        .to_string();
+
+    // 2. 补齐 base64 padding
+    while encoded_part.len() % 4 != 0 {
+        encoded_part.push('=');
+    }
+
+    // 3. 解码 base64 得到 JSON
+    let decoded_bytes = general_purpose::STANDARD.decode(&encoded_part)?;
+    let decoded_str = String::from_utf8(decoded_bytes)?;
+    let vmess_obj: HashMap<String, serde_json::Value> = serde_json::from_str(&decoded_str)?;
+
+    // 4. 提取必需字段
+    let uuid = vmess_obj.get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 id (UUID) 字段")?;
+    
+    let server = vmess_obj.get("add")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 add (服务器地址) 字段")?;
+    
+    let port = vmess_obj.get("port")
+        .and_then(|v| v.as_str().and_then(|s| s.parse::<u16>().ok()))
+        .or_else(|| vmess_obj.get("port").and_then(|v| v.as_u64().map(|n| n as u16)))
+        .ok_or("缺少或无效的 port 字段")?;
+
+    // 5. 提取可选字段，使用默认值
+    let security = vmess_obj.get("scy")
+        .and_then(|v| v.as_str())
+        .unwrap_or("auto");
+    
+    let alter_id = vmess_obj.get("aid")
+        .and_then(|v| v.as_str().and_then(|s| s.parse::<u32>().ok()))
+        .or_else(|| vmess_obj.get("aid").and_then(|v| v.as_u64().map(|n| n as u32)))
+        .unwrap_or(0);
+
+    let network = vmess_obj.get("net")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tcp");
+
+    let tls = vmess_obj.get("tls")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let host = vmess_obj.get("host")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let path = vmess_obj.get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let sni = vmess_obj.get("sni")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let alpn = vmess_obj.get("alpn")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let fingerprint = vmess_obj.get("fp")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // 6. 更新配置文件
+    update_vmess_config(uuid, server, port, security, alter_id, network, 
+                       tls, host, path, sni, alpn, fingerprint)
+}
+
+fn update_shadowsocks_config(method: &str, pass: &str, host: &str, port: u16) -> Result<(), Box<dyn Error>> {
     let path = "/etc/sing-box/config.json";
     let content = fs::read_to_string(path)?;
     let mut config: Value = serde_json::from_str(&content)?;
 
     if let Some(outbounds) = config.get_mut("outbounds").and_then(|o| o.as_array_mut()) {
         for outbound in outbounds {
-            if outbound.get("type") == Some(&Value::String("shadowsocks".to_string())) {
+            if outbound.get("tag") == Some(&Value::String("proxy".to_string())) {
+                // 保持 tag，清除旧字段后添加新配置
+                let tag = outbound.get("tag").cloned().unwrap_or(Value::Null);
+                *outbound = json!({ "tag": tag });
+                
+                outbound["type"] = Value::String("shadowsocks".to_string());
                 outbound["method"] = Value::String(method.to_string());
                 outbound["password"] = Value::String(pass.to_string());
                 outbound["server"] = Value::String(host.to_string());
@@ -77,6 +174,417 @@ fn update_config(method: &str, pass: &str, host: &str, port: u16) -> Result<(), 
     }
 
     fs::write(path, serde_json::to_string_pretty(&config)?)?;
-    println!("✅ 配置已更新 => {}:{}", host, port);
+    println!("✅ Shadowsocks 配置已更新 => {}:{}", host, port);
+    Ok(())
+}
+
+fn update_vmess_config(
+    uuid: &str, 
+    server: &str, 
+    port: u16, 
+    security: &str, 
+    alter_id: u32, 
+    network: &str,
+    tls: &str,
+    host: &str,
+    path: &str,
+    sni: &str,
+    alpn: &str,
+    fingerprint: &str,
+) -> Result<(), Box<dyn Error>> {
+    let path_file = "/etc/sing-box/config.json";
+    let content = fs::read_to_string(path_file)?;
+    let mut config: Value = serde_json::from_str(&content)?;
+
+    if let Some(outbounds) = config.get_mut("outbounds").and_then(|o| o.as_array_mut()) {
+        for outbound in outbounds {
+            if outbound.get("tag") == Some(&Value::String("proxy".to_string())) {
+                // 保持 tag，清除旧字段后添加新配置
+                let tag = outbound.get("tag").cloned().unwrap_or(Value::Null);
+                *outbound = json!({ "tag": tag });
+                
+                outbound["type"] = Value::String("vmess".to_string());
+                outbound["uuid"] = Value::String(uuid.to_string());
+                outbound["server"] = Value::String(server.to_string());
+                outbound["server_port"] = Value::Number(port.into());
+                outbound["security"] = Value::String(security.to_string());
+                outbound["alter_id"] = Value::Number(alter_id.into());
+                outbound["network"] = Value::String(network.to_string());
+
+                // 构造 transport 对象
+                let mut transport = json!({});
+                if network == "ws" {
+                    transport["type"] = Value::String("websocket".to_string());
+                    if !path.is_empty() {
+                        transport["path"] = Value::String(path.to_string());
+                    }
+                    if !host.is_empty() {
+                        transport["headers"] = json!({ "Host": host });
+                    }
+                } else if network == "h2" {
+                    transport["type"] = Value::String("http".to_string());
+                    if !host.is_empty() {
+                        transport["host"] = Value::String(host.to_string());
+                    }
+                    if !path.is_empty() {
+                        transport["path"] = Value::String(path.to_string());
+                    }
+                } else {
+                    transport["type"] = Value::String(network.to_string());
+                }
+                outbound["transport"] = transport;
+
+                // 构造 TLS 对象
+                let mut tls_config = json!({});
+                if !tls.is_empty() && tls != "false" && tls != "none" {
+                    tls_config["enabled"] = Value::Bool(true);
+                    if !sni.is_empty() {
+                        tls_config["server_name"] = Value::String(sni.to_string());
+                    } else if !host.is_empty() {
+                        tls_config["server_name"] = Value::String(host.to_string());
+                    }
+                    if !fingerprint.is_empty() {
+                        tls_config["utls"] = json!({
+                            "enabled": true,
+                            "fingerprint": fingerprint
+                        });
+                    }
+                    if !alpn.is_empty() {
+                        let alpn_list: Vec<&str> = alpn.split(',').collect();
+                        tls_config["alpn"] = Value::Array(
+                            alpn_list.iter().map(|a| Value::String(a.trim().to_string())).collect()
+                        );
+                    }
+                }
+                outbound["tls"] = tls_config;
+
+                // 其他必需字段
+                outbound["global_padding"] = Value::Bool(false);
+                outbound["authenticated_length"] = Value::Bool(true);
+                outbound["packet_encoding"] = Value::String("".to_string());
+                outbound["multiplex"] = json!({});
+
+                break;
+            }
+        }
+    }
+
+    fs::write(path_file, serde_json::to_string_pretty(&config)?)?;
+    println!("✅ VMess 配置已更新 => {}:{}", server, port);
+    Ok(())
+}
+
+fn handle_trojan(url: &str) -> Result<(), Box<dyn Error>> {
+    // trojan://password@server:port?...
+    let url_str = url.trim_start_matches("trojan://");
+    
+    // 分离密码和地址
+    let at_index = url_str.rfind('@').ok_or("链接中缺少 @ 符号")?;
+    let (password, server_part) = url_str.split_at(at_index);
+    let server_part = &server_part[1..];
+    
+    // 去掉查询参数
+    let server_part = server_part.split('?').next().unwrap_or("");
+    
+    // 分离服务器和端口（从右边找，兼容 IPv6）
+    let addr_parts: Vec<&str> = server_part.rsplitn(2, ':').collect();
+    if addr_parts.len() < 2 {
+        return Err("无法解析服务器地址和端口".into());
+    }
+    
+    let server = addr_parts[1];
+    let port = addr_parts[0].parse::<u16>()?;
+    
+    update_trojan_config(password, server, port)
+}
+
+fn handle_vless(url: &str) -> Result<(), Box<dyn Error>> {
+    // vless://uuid@server:port?...
+    let url_str = url.trim_start_matches("vless://");
+    
+    // 分离 UUID 和地址
+    let at_index = url_str.rfind('@').ok_or("链接中缺少 @ 符号")?;
+    let (uuid, server_part) = url_str.split_at(at_index);
+    let server_part = &server_part[1..];
+    
+    // 分离服务器、端口和查询参数
+    let (server_addr, query) = server_part.split_once('?').unwrap_or((server_part, ""));
+    
+    let addr_parts: Vec<&str> = server_addr.rsplitn(2, ':').collect();
+    if addr_parts.len() < 2 {
+        return Err("无法解析服务器地址和端口".into());
+    }
+    
+    let server = addr_parts[1];
+    let port = addr_parts[0].parse::<u16>()?;
+    
+    // 解析查询参数
+    let mut flow = "";
+    let mut network = "tcp";
+    let mut tls = "";
+    let mut sni = "";
+    let mut host = "";
+    let mut path = "";
+    let mut alpn = "";
+    
+    for param in query.split('&') {
+        if let Some((key, val)) = param.split_once('=') {
+            match key {
+                "flow" => flow = val,
+                "type" => network = val,
+                "security" => tls = val,
+                "sni" => sni = val,
+                "host" => host = val,
+                "path" => path = val,
+                "alpn" => alpn = val,
+                _ => {}
+            }
+        }
+    }
+    
+    update_vless_config(uuid, server, port, flow, network, tls, sni, host, path, alpn)
+}
+
+fn handle_hysteria2(url: &str) -> Result<(), Box<dyn Error>> {
+    // hysteria2://uuid@server:port?peer=...&insecure=...&obfs=...&obfs-password=...
+    let url_str = if url.starts_with("hysteria2://") {
+        url.trim_start_matches("hysteria2://")
+    } else {
+        url.trim_start_matches("hy2://")
+    };
+    
+    // 分离 UUID 和地址
+    let at_index = url_str.rfind('@').ok_or("链接中缺少 @ 符号")?;
+    let (uuid, server_part) = url_str.split_at(at_index);
+    let server_part = &server_part[1..];
+    
+    // 分离服务器、端口和查询参数
+    let (server_addr, query) = server_part.split_once('?').unwrap_or((server_part, ""));
+    
+    let addr_parts: Vec<&str> = server_addr.rsplitn(2, ':').collect();
+    if addr_parts.len() < 2 {
+        return Err("无法解析服务器地址和端口".into());
+    }
+    
+    let server = addr_parts[1];
+    let port = addr_parts[0].parse::<u16>()?;
+    
+    // 解析查询参数
+    let mut peer = "";
+    let mut insecure = false;
+    let mut obfs = "salamander"; // 默认值
+    let mut obfs_password_str = String::new();
+    let mut sni = "";
+    let mut alpn = "";
+    
+    for param in query.split('&') {
+        if let Some((key, val)) = param.split_once('=') {
+            match key {
+                "peer" => peer = val,
+                "insecure" => insecure = val == "1" || val == "true",
+                "obfs" => obfs = val,
+                "obfs-password" => {
+                    // 简单的 URL 解码（%3D 等）
+                    obfs_password_str = val.replace("%3D", "=").replace("%2B", "+").replace("%2F", "/");
+                }
+                "sni" => sni = val,
+                "alpn" => alpn = val,
+                _ => {}
+            }
+        }
+    }
+    
+    update_hysteria2_config(uuid, server, port, peer, insecure, obfs, &obfs_password_str, sni, alpn)
+}
+
+fn update_trojan_config(password: &str, server: &str, port: u16) -> Result<(), Box<dyn Error>> {
+    let path = "/etc/sing-box/config.json";
+    let content = fs::read_to_string(path)?;
+    let mut config: Value = serde_json::from_str(&content)?;
+
+    if let Some(outbounds) = config.get_mut("outbounds").and_then(|o| o.as_array_mut()) {
+        for outbound in outbounds {
+            if outbound.get("tag") == Some(&Value::String("proxy".to_string())) {
+                // 保持 tag，清除旧字段后添加新配置
+                let tag = outbound.get("tag").cloned().unwrap_or(Value::Null);
+                *outbound = json!({ "tag": tag });
+                
+                outbound["type"] = Value::String("trojan".to_string());
+                outbound["password"] = Value::String(password.to_string());
+                outbound["server"] = Value::String(server.to_string());
+                outbound["server_port"] = Value::Number(port.into());
+                outbound["network"] = Value::String("tcp".to_string());
+                outbound["tls"] = json!({});
+                outbound["multiplex"] = json!({});
+                outbound["transport"] = json!({});
+                break;
+            }
+        }
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&config)?)?;
+    println!("✅ Trojan 配置已更新 => {}:{}", server, port);
+    Ok(())
+}
+
+fn update_vless_config(
+    uuid: &str,
+    server: &str,
+    port: u16,
+    flow: &str,
+    network: &str,
+    tls: &str,
+    sni: &str,
+    host: &str,
+    path: &str,
+    alpn: &str,
+) -> Result<(), Box<dyn Error>> {
+    let path_file = "/etc/sing-box/config.json";
+    let content = fs::read_to_string(path_file)?;
+    let mut config: Value = serde_json::from_str(&content)?;
+
+    if let Some(outbounds) = config.get_mut("outbounds").and_then(|o| o.as_array_mut()) {
+        for outbound in outbounds {
+            if outbound.get("tag") == Some(&Value::String("proxy".to_string())) {
+                // 保持 tag，清除旧字段后添加新配置
+                let tag = outbound.get("tag").cloned().unwrap_or(Value::Null);
+                *outbound = json!({ "tag": tag });
+                
+                outbound["type"] = Value::String("vless".to_string());
+                outbound["uuid"] = Value::String(uuid.to_string());
+                outbound["server"] = Value::String(server.to_string());
+                outbound["server_port"] = Value::Number(port.into());
+                
+                if !flow.is_empty() {
+                    outbound["flow"] = Value::String(flow.to_string());
+                }
+                
+                outbound["network"] = Value::String(network.to_string());
+                
+                // 构造 transport 对象
+                let mut transport = json!({});
+                if network == "ws" {
+                    transport["type"] = Value::String("websocket".to_string());
+                    if !path.is_empty() {
+                        transport["path"] = Value::String(path.to_string());
+                    }
+                    if !host.is_empty() {
+                        transport["headers"] = json!({ "Host": host });
+                    }
+                } else if network == "h2" {
+                    transport["type"] = Value::String("http".to_string());
+                    if !host.is_empty() {
+                        transport["host"] = Value::String(host.to_string());
+                    }
+                    if !path.is_empty() {
+                        transport["path"] = Value::String(path.to_string());
+                    }
+                } else if network == "grpc" {
+                    transport["type"] = Value::String("grpc".to_string());
+                    if !path.is_empty() {
+                        transport["service_name"] = Value::String(path.to_string());
+                    }
+                } else {
+                    transport["type"] = Value::String(network.to_string());
+                }
+                outbound["transport"] = transport;
+                
+                // 构造 TLS 对象
+                let mut tls_config = json!({});
+                if !tls.is_empty() && tls != "none" {
+                    tls_config["enabled"] = Value::Bool(true);
+                    if !sni.is_empty() {
+                        tls_config["server_name"] = Value::String(sni.to_string());
+                    } else if !host.is_empty() {
+                        tls_config["server_name"] = Value::String(host.to_string());
+                    }
+                    if !alpn.is_empty() {
+                        let alpn_list: Vec<&str> = alpn.split(',').collect();
+                        tls_config["alpn"] = Value::Array(
+                            alpn_list.iter().map(|a| Value::String(a.trim().to_string())).collect()
+                        );
+                    }
+                }
+                outbound["tls"] = tls_config;
+                
+                outbound["packet_encoding"] = Value::String("".to_string());
+                outbound["multiplex"] = json!({});
+                break;
+            }
+        }
+    }
+
+    fs::write(path_file, serde_json::to_string_pretty(&config)?)?;
+    println!("✅ VLESS 配置已更新 => {}:{}", server, port);
+    Ok(())
+}
+
+fn update_hysteria2_config(
+    uuid: &str,
+    server: &str,
+    port: u16,
+    peer: &str,
+    insecure: bool,
+    obfs: &str,
+    obfs_password: &str,
+    sni: &str,
+    alpn: &str,
+) -> Result<(), Box<dyn Error>> {
+    let path = "/etc/sing-box/config.json";
+    let content = fs::read_to_string(path)?;
+    let mut config: Value = serde_json::from_str(&content)?;
+
+    if let Some(outbounds) = config.get_mut("outbounds").and_then(|o| o.as_array_mut()) {
+        for outbound in outbounds {
+            if outbound.get("tag") == Some(&Value::String("proxy".to_string())) {
+                // 保持 tag，清除旧字段后添加新配置
+                let tag = outbound.get("tag").cloned().unwrap_or(Value::Null);
+                *outbound = json!({ "tag": tag });
+                
+                outbound["type"] = Value::String("hysteria2".to_string());
+                outbound["password"] = Value::String(uuid.to_string()); // Hysteria2 使用 password 字段存储 UUID
+                outbound["server"] = Value::String(server.to_string());
+                outbound["server_port"] = Value::Number(port.into());
+                
+                // 构造 obfs 对象
+                let mut obfs_config = json!({});
+                if !obfs.is_empty() && obfs != "none" {
+                    obfs_config["type"] = Value::String(obfs.to_string());
+                    if !obfs_password.is_empty() {
+                        obfs_config["password"] = Value::String(obfs_password.to_string());
+                    }
+                }
+                outbound["obfs"] = obfs_config;
+                
+                // 构造 TLS 对象
+                let mut tls_config = json!({});
+                tls_config["enabled"] = Value::Bool(true);
+                
+                if insecure {
+                    tls_config["insecure"] = Value::Bool(true);
+                }
+                
+                if !peer.is_empty() {
+                    tls_config["server_name"] = Value::String(peer.to_string());
+                } else if !sni.is_empty() {
+                    tls_config["server_name"] = Value::String(sni.to_string());
+                }
+                
+                if !alpn.is_empty() {
+                    let alpn_list: Vec<&str> = alpn.split(',').collect();
+                    tls_config["alpn"] = Value::Array(
+                        alpn_list.iter().map(|a| Value::String(a.trim().to_string())).collect()
+                    );
+                }
+                outbound["tls"] = tls_config;
+                
+                outbound["network"] = Value::String("udp".to_string());
+                break;
+            }
+        }
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&config)?)?;
+    println!("✅ Hysteria2 配置已更新 => {}:{}", server, port);
     Ok(())
 }
