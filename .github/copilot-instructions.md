@@ -25,9 +25,9 @@ This file gives actionable, repository-specific guidance for AI coding agents wo
   - **VMess**: Input `vmess://` link (base64-encoded JSON with fields: `id`, `add`, `port`, `scy`, `aid`, `net`, `host`, `path`, `tls`, `sni`, `alpn`, `fp`).
     - Decodes base64 to JSON, extracts UUID, server, port, and optional transport/TLS parameters.
     - Supports transports: `tcp` (default), `ws` (WebSocket with path/host), `h2` (HTTP/2 with path/host).
-  - **Trojan**: Input `trojan://password@server:port?...`. Directly parses URI format.
-  - **VLESS**: Input `vless://uuid@server:port?flow=...&security=tls&sni=...&host=...&path=...&alpn=...`. Supports flow modes, TLS, and transport options.
-  - **Hysteria2**: Input `hysteria2://uuid@server:port?peer=...&insecure=...&obfs=...&obfs-password=...` or `hy2://...`. UUID stored as password field. Obfs defaults to "salamander". Supports peer, insecure, obfs, and obfs-password params. Also supports `sni` and `alpn`.
+  - **Trojan**: Input `trojan://password@server:port?...#tag`. Strips prefix, removes `#tag` fragment, parses directly from URI format. Password goes into config, server/port parsed with `rsplitn(2, ':')`.
+  - **VLESS**: Input `vless://uuid@server:port?flow=...&security=tls&sni=...&host=...&path=...&alpn=...#tag`. Strips prefix, removes `#tag` fragment, parses query parameters. Supports flow modes, TLS, and transport options.
+  - **Hysteria2**: Input `hysteria2://uuid@server:port?peer=...&insecure=...&obfs=...&obfs-password=...#tag` or `hy2://...`. Strips prefix and `#tag`, parses query params using `Option<>` types: `insecure_opt: Option<bool>` (None=unset, Some(true)=1, Some(false)=0), `obfs_opt: Option<&str>` (None=unset, Some(val)=provided). UUID stored as password field. Only writes obfs field if explicitly provided in URL (no defaults). TLS object only added if has content (insecure/server_name/alpn). Supports peer, insecure, obfs, obfs-password, sni, alpn params.
   - Config updates: Always find outbound with `tag == "proxy"`, clear all fields except tag, then set protocol-specific fields to ensure no stale config remains.
   - Errors propagated as `Result<..., Box<dyn Error>>`; failures print to stderr via `main.rs`.
 
@@ -44,10 +44,13 @@ This file gives actionable, repository-specific guidance for AI coding agents wo
 - **Patterns & gotchas for code edits:**
   - Keep CLI semantics in `src/main.rs` consistent — add subcommands there when adding features.
   - Protocol detection in `set.rs`: use `url.starts_with()` to dispatch to protocol-specific handlers (`handle_shadowsocks`, `handle_vmess`, `handle_trojan`, `handle_vless`, `handle_hysteria2`).
+  - **All handlers must strip the `#tag` fragment first**: Use `.split('#').next().unwrap_or("")` early in parsing to remove URL fragments, since tags like `#Hy2|美国03` should not interfere with parsing.
   - Preserve base64 padding logic (append `=` until length % 4 == 0) in Shadowsocks and VMess parsing — tolerates missing padding by design.
   - Shadowsocks/Trojan/VLESS/Hysteria2 use `rsplitn(2, ':')` for address parsing to tolerate IPv6; keep that if extending.
   - VMess/VLESS/Trojan transport/TLS construction uses conditional JSON building: omit empty/default fields (e.g., `host`, `path`, `fingerprint`).
   - Always update outbound with `tag == "proxy"` (not by type) to preserve routing consistency and clear old protocol fields.
+  - **Hysteria2 obfs handling**: Use `Option<&str>` to distinguish "not provided" (None) from "provided empty string" (Some("")). Only write obfs object if `obfs_opt` is Some with non-empty value. Never default to "salamander".
+  - **Hysteria2 insecure handling**: Use `Option<bool>` to distinguish "not specified" (None) from "explicitly set" (Some(true/false)). Only add insecure:true to TLS if explicitly set to "1" in URL.
   - Config updates: Reset object to `{ "tag": tag }` first, then add protocol-specific fields to avoid stale config remnants.
   - Hysteria2: UUID is stored in `password` field; obfs defaults to "salamander"; peer parameter sets TLS server_name.
   - When adding new protocols, follow the `handle_*()` pattern to keep `execute()` clean.

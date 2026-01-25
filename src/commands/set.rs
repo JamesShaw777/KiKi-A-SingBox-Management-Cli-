@@ -275,8 +275,11 @@ fn update_vmess_config(
 }
 
 fn handle_trojan(url: &str) -> Result<(), Box<dyn Error>> {
-    // trojan://password@server:port?...
+    // trojan://password@server:port?...#tag
     let url_str = url.trim_start_matches("trojan://");
+    
+    // 先去掉 #tag 片段
+    let url_str = url_str.split('#').next().unwrap_or("");
     
     // 分离密码和地址
     let at_index = url_str.rfind('@').ok_or("链接中缺少 @ 符号")?;
@@ -299,8 +302,11 @@ fn handle_trojan(url: &str) -> Result<(), Box<dyn Error>> {
 }
 
 fn handle_vless(url: &str) -> Result<(), Box<dyn Error>> {
-    // vless://uuid@server:port?...
+    // vless://uuid@server:port?...#tag
     let url_str = url.trim_start_matches("vless://");
+    
+    // 先去掉 #tag 片段
+    let url_str = url_str.split('#').next().unwrap_or("");
     
     // 分离 UUID 和地址
     let at_index = url_str.rfind('@').ok_or("链接中缺少 @ 符号")?;
@@ -346,12 +352,15 @@ fn handle_vless(url: &str) -> Result<(), Box<dyn Error>> {
 }
 
 fn handle_hysteria2(url: &str) -> Result<(), Box<dyn Error>> {
-    // hysteria2://uuid@server:port?peer=...&insecure=...&obfs=...&obfs-password=...
+    // hysteria2://uuid@server:port?peer=...&insecure=...&obfs=...&obfs-password=...#tag
     let url_str = if url.starts_with("hysteria2://") {
         url.trim_start_matches("hysteria2://")
     } else {
         url.trim_start_matches("hy2://")
     };
+    
+    // 先去掉 #tag 片段
+    let url_str = url_str.split('#').next().unwrap_or("");
     
     // 分离 UUID 和地址
     let at_index = url_str.rfind('@').ok_or("链接中缺少 @ 符号")?;
@@ -371,8 +380,8 @@ fn handle_hysteria2(url: &str) -> Result<(), Box<dyn Error>> {
     
     // 解析查询参数
     let mut peer = "";
-    let mut insecure = false;
-    let mut obfs = "salamander"; // 默认值
+    let mut insecure_opt: Option<bool> = None; // None=未指定, Some(true)=1, Some(false)=0
+    let mut obfs_opt: Option<&str> = None; // None=未指定, Some("")=给空值
     let mut obfs_password_str = String::new();
     let mut sni = "";
     let mut alpn = "";
@@ -381,8 +390,8 @@ fn handle_hysteria2(url: &str) -> Result<(), Box<dyn Error>> {
         if let Some((key, val)) = param.split_once('=') {
             match key {
                 "peer" => peer = val,
-                "insecure" => insecure = val == "1" || val == "true",
-                "obfs" => obfs = val,
+                "insecure" => insecure_opt = Some(val == "1"),
+                "obfs" => obfs_opt = Some(val),
                 "obfs-password" => {
                     // 简单的 URL 解码（%3D 等）
                     obfs_password_str = val.replace("%3D", "=").replace("%2B", "+").replace("%2F", "/");
@@ -394,7 +403,7 @@ fn handle_hysteria2(url: &str) -> Result<(), Box<dyn Error>> {
         }
     }
     
-    update_hysteria2_config(uuid, server, port, peer, insecure, obfs, &obfs_password_str, sni, alpn)
+    update_hysteria2_config(uuid, server, port, peer, insecure_opt, obfs_opt, &obfs_password_str, sni, alpn)
 }
 
 fn update_trojan_config(password: &str, server: &str, port: u16) -> Result<(), Box<dyn Error>> {
@@ -524,8 +533,8 @@ fn update_hysteria2_config(
     server: &str,
     port: u16,
     peer: &str,
-    insecure: bool,
-    obfs: &str,
+    insecure_opt: Option<bool>,
+    obfs_opt: Option<&str>,
     obfs_password: &str,
     sni: &str,
     alpn: &str,
@@ -546,39 +555,57 @@ fn update_hysteria2_config(
                 outbound["server"] = Value::String(server.to_string());
                 outbound["server_port"] = Value::Number(port.into());
                 
-                // 构造 obfs 对象
-                let mut obfs_config = json!({});
-                if !obfs.is_empty() && obfs != "none" {
-                    obfs_config["type"] = Value::String(obfs.to_string());
-                    if !obfs_password.is_empty() {
-                        obfs_config["password"] = Value::String(obfs_password.to_string());
+                // 构造 obfs 对象 - 只在明确提供时
+                if let Some(obfs_val) = obfs_opt {
+                    if !obfs_val.is_empty() {
+                        let mut obfs_config = json!({"type": obfs_val});
+                        if !obfs_password.is_empty() {
+                            obfs_config["password"] = Value::String(obfs_password.to_string());
+                        }
+                        outbound["obfs"] = obfs_config;
                     }
                 }
-                outbound["obfs"] = obfs_config;
                 
                 // 构造 TLS 对象
                 let mut tls_config = json!({});
-                tls_config["enabled"] = Value::Bool(true);
+                let mut has_tls_config = false;
                 
-                if insecure {
-                    tls_config["insecure"] = Value::Bool(true);
+                // 只在明确设置为 true 时添加 insecure
+                if let Some(insecure) = insecure_opt {
+                    if insecure {
+                        tls_config["insecure"] = Value::Bool(true);
+                        has_tls_config = true;
+                    }
                 }
                 
-                if !peer.is_empty() {
-                    tls_config["server_name"] = Value::String(peer.to_string());
-                } else if !sni.is_empty() {
-                    tls_config["server_name"] = Value::String(sni.to_string());
+                // sni 和 server_name
+                let server_name = if !sni.is_empty() {
+                    sni
+                } else if !peer.is_empty() {
+                    peer
+                } else {
+                    ""
+                };
+                
+                if !server_name.is_empty() {
+                    tls_config["server_name"] = Value::String(server_name.to_string());
+                    has_tls_config = true;
                 }
                 
+                // alpn
                 if !alpn.is_empty() {
                     let alpn_list: Vec<&str> = alpn.split(',').collect();
                     tls_config["alpn"] = Value::Array(
                         alpn_list.iter().map(|a| Value::String(a.trim().to_string())).collect()
                     );
+                    has_tls_config = true;
                 }
-                outbound["tls"] = tls_config;
                 
-                outbound["network"] = Value::String("udp".to_string());
+                // 只在有有效配置时添加 tls
+                if has_tls_config {
+                    outbound["tls"] = tls_config;
+                }
+                
                 break;
             }
         }
