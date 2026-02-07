@@ -75,6 +75,12 @@ sudo kiki set "hysteria2://550e8400-e29b-41d4-a716-446655440000@example.com:443?
 sudo kiki set "hy2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com"
 ```
 
+**AnyTLS 节点：**
+
+```bash
+sudo kiki set "anytls://password@example.com:443"
+```
+
 ### 3. 管理服务状态
 
 ```bash

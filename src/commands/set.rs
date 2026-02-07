@@ -15,8 +15,10 @@ pub fn execute(url: &str) -> Result<(), Box<dyn Error>> {
         handle_vless(url)
     } else if url.starts_with("hy2://") || url.starts_with("hysteria2://") {
         handle_hysteria2(url)
+    } else if url.starts_with("anytls://") {
+        handle_anytls(url)
     } else {
-        Err("不支持的协议，请提供 ss://, vmess://, trojan://, vless://, hy2:// 或 hysteria2:// 链接".into())
+        Err("不支持的协议，请提供 ss://, vmess://, trojan://, vless://, hy2://, hysteria2:// 或 anytls:// 链接".into())
     }
 }
 
@@ -406,6 +408,33 @@ fn handle_hysteria2(url: &str) -> Result<(), Box<dyn Error>> {
     update_hysteria2_config(uuid, server, port, peer, insecure_opt, obfs_opt, &obfs_password_str, sni, alpn)
 }
 
+fn handle_anytls(url: &str) -> Result<(), Box<dyn Error>> {
+    // anytls://password@server:port?...#tag
+    let url_str = url.trim_start_matches("anytls://");
+
+    // 先去掉 #tag 片段
+    let url_str = url_str.split('#').next().unwrap_or("");
+
+    // 分离服务器、端口和查询参数（查询参数当前忽略）
+    let (server_part, _query) = url_str.split_once('?').unwrap_or((url_str, ""));
+
+    // 分离密码和地址
+    let at_index = server_part.rfind('@').ok_or("链接中缺少 @ 符号")?;
+    let (password, server_addr) = server_part.split_at(at_index);
+    let server_addr = &server_addr[1..];
+
+    // 分离服务器和端口（从右边找，兼容 IPv6）
+    let addr_parts: Vec<&str> = server_addr.rsplitn(2, ':').collect();
+    if addr_parts.len() < 2 {
+        return Err("无法解析服务器地址和端口".into());
+    }
+
+    let server = addr_parts[1];
+    let port = addr_parts[0].parse::<u16>()?;
+
+    update_anytls_config(password, server, port)
+}
+
 fn update_trojan_config(password: &str, server: &str, port: u16) -> Result<(), Box<dyn Error>> {
     let path = "/etc/sing-box/config.json";
     let content = fs::read_to_string(path)?;
@@ -613,5 +642,32 @@ fn update_hysteria2_config(
 
     fs::write(path, serde_json::to_string_pretty(&config)?)?;
     println!("✅ Hysteria2 配置已更新 => {}:{}", server, port);
+    Ok(())
+}
+
+fn update_anytls_config(password: &str, server: &str, port: u16) -> Result<(), Box<dyn Error>> {
+    let path = "/etc/sing-box/config.json";
+    let content = fs::read_to_string(path)?;
+    let mut config: Value = serde_json::from_str(&content)?;
+
+    if let Some(outbounds) = config.get_mut("outbounds").and_then(|o| o.as_array_mut()) {
+        for outbound in outbounds {
+            if outbound.get("tag") == Some(&Value::String("proxy".to_string())) {
+                // 保持 tag，清除旧字段后添加新配置
+                let tag = outbound.get("tag").cloned().unwrap_or(Value::Null);
+                *outbound = json!({ "tag": tag });
+
+                outbound["type"] = Value::String("anytls".to_string());
+                outbound["password"] = Value::String(password.to_string());
+                outbound["server"] = Value::String(server.to_string());
+                outbound["server_port"] = Value::Number(port.into());
+                outbound["tls"] = json!({});
+                break;
+            }
+        }
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&config)?)?;
+    println!("✅ AnyTLS 配置已更新 => {}:{}", server, port);
     Ok(())
 }
