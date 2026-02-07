@@ -37,6 +37,8 @@ fn main() {
         Commands::Set { url } => {
             if let Err(e) = commands::set::execute(url) {
                 eprintln!("❌ Error: {}", e);
+            } else {
+                commands::service::restart();
             }
         }
         Commands::Check => commands::check::execute(),
