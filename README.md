@@ -1,5 +1,7 @@
 # KiKi - A Sing-Box Management CLI
 
+[English](README.en.md) | 简体中文
+
 🚀 **KiKi** 是一个用 Rust 编写的轻量级 Linux 命令行工具，旨在简化 `sing-box` 的日常管理。它提供了快速解析节点、环境诊断以及服务控制功能。
 
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
