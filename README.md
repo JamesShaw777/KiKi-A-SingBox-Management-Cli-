@@ -75,6 +75,12 @@ sudo kiki set "hysteria2://550e8400-e29b-41d4-a716-446655440000@example.com:443?
 sudo kiki set "hy2://550e8400-e29b-41d4-a716-446655440000@example.com:443?peer=example.com"
 ```
 
+**TUIC 节点：**
+
+```bash
+sudo kiki set "tuic://550e8400-e29b-41d4-a716-446655440000:password@example.com:443?sni=example.com&congestion_control=bbr&udp_relay_mode=native"
+```
+
 **AnyTLS 节点：**
 
 ```bash

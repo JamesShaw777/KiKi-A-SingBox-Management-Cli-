@@ -15,10 +15,12 @@ pub fn execute(url: &str) -> Result<(), Box<dyn Error>> {
         handle_vless(url)
     } else if url.starts_with("hy2://") || url.starts_with("hysteria2://") {
         handle_hysteria2(url)
+    } else if url.starts_with("tuic://") {
+        handle_tuic(url)
     } else if url.starts_with("anytls://") {
         handle_anytls(url)
     } else {
-        Err("不支持的协议，请提供 ss://, vmess://, trojan://, vless://, hy2://, hysteria2:// 或 anytls:// 链接".into())
+        Err("不支持的协议，请提供 ss://, vmess://, trojan://, vless://, hy2://, hysteria2://, tuic:// 或 anytls:// 链接".into())
     }
 }
 
@@ -408,6 +410,90 @@ fn handle_hysteria2(url: &str) -> Result<(), Box<dyn Error>> {
     update_hysteria2_config(uuid, server, port, peer, insecure_opt, obfs_opt, &obfs_password_str, sni, alpn)
 }
 
+fn handle_tuic(url: &str) -> Result<(), Box<dyn Error>> {
+    // tuic://uuid:password@server:port?...#tag
+    let url_str = url.trim_start_matches("tuic://");
+
+    // 先去掉 #tag 片段
+    let url_str = url_str.split('#').next().unwrap_or("");
+
+    // 分离服务器、端口和查询参数
+    let (main_part, query) = url_str.split_once('?').unwrap_or((url_str, ""));
+
+    // 分离 UUID/密码 和地址
+    let at_index = main_part.rfind('@').ok_or("链接中缺少 @ 符号")?;
+    let (user_info, server_addr) = main_part.split_at(at_index);
+    let server_addr = &server_addr[1..];
+
+    let user_parts: Vec<&str> = user_info.splitn(2, ':').collect();
+    if user_parts.len() < 2 {
+        return Err("无法解析 TUIC 用户信息".into());
+    }
+    let uuid = user_parts[0];
+    let password = user_parts[1];
+
+    // 分离服务器和端口（从右边找，兼容 IPv6）
+    let addr_parts: Vec<&str> = server_addr.rsplitn(2, ':').collect();
+    if addr_parts.len() < 2 {
+        return Err("无法解析服务器地址和端口".into());
+    }
+    let server = addr_parts[1];
+    let port = addr_parts[0].parse::<u16>()?;
+
+    // 解析查询参数
+    let mut sni = "";
+    let mut alpn = "";
+    let mut congestion_control = "";
+    let mut udp_relay_mode = "";
+    let mut udp_over_stream_opt: Option<bool> = None;
+    let mut zero_rtt_handshake_opt: Option<bool> = None;
+    let mut heartbeat = "";
+    let mut network = "";
+    let mut insecure_opt: Option<bool> = None;
+
+    for param in query.split('&') {
+        if param.is_empty() {
+            continue;
+        }
+        let (key, val) = param.split_once('=').unwrap_or((param, ""));
+        match key {
+            "sni" => sni = val,
+            "alpn" => alpn = val,
+            "congestion_control" => congestion_control = val,
+            "udp_relay_mode" => udp_relay_mode = val,
+            "udp_over_stream" => udp_over_stream_opt = parse_bool_param(val),
+            "zero_rtt_handshake" => zero_rtt_handshake_opt = parse_bool_param(val),
+            "heartbeat" => heartbeat = val,
+            "network" => network = val,
+            "allow_insecure" | "insecure" => insecure_opt = parse_bool_param(val),
+            _ => {}
+        }
+    }
+
+    if udp_over_stream_opt == Some(false) {
+        udp_over_stream_opt = None;
+    }
+    if udp_over_stream_opt == Some(true) && !udp_relay_mode.is_empty() {
+        return Err("udp_relay_mode 与 udp_over_stream 冲突，请只保留其一".into());
+    }
+
+    update_tuic_config(
+        uuid,
+        password,
+        server,
+        port,
+        sni,
+        alpn,
+        congestion_control,
+        udp_relay_mode,
+        udp_over_stream_opt,
+        zero_rtt_handshake_opt,
+        heartbeat,
+        network,
+        insecure_opt,
+    )
+}
+
 fn handle_anytls(url: &str) -> Result<(), Box<dyn Error>> {
     // anytls://password@server:port?...#tag
     let url_str = url.trim_start_matches("anytls://");
@@ -645,6 +731,82 @@ fn update_hysteria2_config(
     Ok(())
 }
 
+fn update_tuic_config(
+    uuid: &str,
+    password: &str,
+    server: &str,
+    port: u16,
+    sni: &str,
+    alpn: &str,
+    congestion_control: &str,
+    udp_relay_mode: &str,
+    udp_over_stream_opt: Option<bool>,
+    zero_rtt_handshake_opt: Option<bool>,
+    heartbeat: &str,
+    network: &str,
+    insecure_opt: Option<bool>,
+) -> Result<(), Box<dyn Error>> {
+    let path = "/etc/sing-box/config.json";
+    let content = fs::read_to_string(path)?;
+    let mut config: Value = serde_json::from_str(&content)?;
+
+    if let Some(outbounds) = config.get_mut("outbounds").and_then(|o| o.as_array_mut()) {
+        for outbound in outbounds {
+            if outbound.get("tag") == Some(&Value::String("proxy".to_string())) {
+                // 保持 tag，清除旧字段后添加新配置
+                let tag = outbound.get("tag").cloned().unwrap_or(Value::Null);
+                *outbound = json!({ "tag": tag });
+
+                outbound["type"] = Value::String("tuic".to_string());
+                outbound["uuid"] = Value::String(uuid.to_string());
+                outbound["password"] = Value::String(password.to_string());
+                outbound["server"] = Value::String(server.to_string());
+                outbound["server_port"] = Value::Number(port.into());
+
+                if !congestion_control.is_empty() {
+                    outbound["congestion_control"] = Value::String(congestion_control.to_string());
+                }
+                if !udp_relay_mode.is_empty() {
+                    outbound["udp_relay_mode"] = Value::String(udp_relay_mode.to_string());
+                }
+                if let Some(udp_over_stream) = udp_over_stream_opt {
+                    outbound["udp_over_stream"] = Value::Bool(udp_over_stream);
+                }
+                if let Some(zero_rtt_handshake) = zero_rtt_handshake_opt {
+                    outbound["zero_rtt_handshake"] = Value::Bool(zero_rtt_handshake);
+                }
+                if !heartbeat.is_empty() {
+                    outbound["heartbeat"] = Value::String(heartbeat.to_string());
+                }
+                if !network.is_empty() {
+                    outbound["network"] = Value::String(network.to_string());
+                }
+
+                let mut tls_config = json!({ "enabled": true });
+                if !sni.is_empty() {
+                    tls_config["server_name"] = Value::String(sni.to_string());
+                }
+                if let Some(insecure) = insecure_opt {
+                    tls_config["insecure"] = Value::Bool(insecure);
+                }
+                if !alpn.is_empty() {
+                    let alpn_list: Vec<&str> = alpn.split(',').collect();
+                    tls_config["alpn"] = Value::Array(
+                        alpn_list.iter().map(|a| Value::String(a.trim().to_string())).collect(),
+                    );
+                }
+                outbound["tls"] = tls_config;
+
+                break;
+            }
+        }
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&config)?)?;
+    println!("✅ TUIC 配置已更新 => {}:{}", server, port);
+    Ok(())
+}
+
 fn update_anytls_config(password: &str, server: &str, port: u16) -> Result<(), Box<dyn Error>> {
     let path = "/etc/sing-box/config.json";
     let content = fs::read_to_string(path)?;
@@ -670,4 +832,15 @@ fn update_anytls_config(password: &str, server: &str, port: u16) -> Result<(), B
     fs::write(path, serde_json::to_string_pretty(&config)?)?;
     println!("✅ AnyTLS 配置已更新 => {}:{}", server, port);
     Ok(())
+}
+
+fn parse_bool_param(value: &str) -> Option<bool> {
+    if value.is_empty() {
+        return Some(true);
+    }
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" => Some(true),
+        "0" | "false" | "no" => Some(false),
+        _ => None,
+    }
 }
