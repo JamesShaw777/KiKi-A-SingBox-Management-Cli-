@@ -4,6 +4,7 @@ set -euo pipefail
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 REPO="JamesShaw777/KiKi-A-SingBox-Management-Cli-"
@@ -12,6 +13,7 @@ GITHUB_PROXY="${GITHUB_PROXY:-https://cdn.gh-proxy.org/}"
 KIKI_TAG="${KIKI_TAG:-}"
 KIKI_TARGET="${KIKI_TARGET:-}"
 KIKI_LIBC="${KIKI_LIBC:-}"
+DEFAULT_KIKI_TAG="${DEFAULT_KIKI_TAG:-v0.2.0}"
 
 log_info() {
     echo -e "${GREEN}$*${NC}"
@@ -19,6 +21,10 @@ log_info() {
 
 log_error() {
     echo -e "${RED}$*${NC}" >&2
+}
+
+log_warn() {
+    echo -e "${YELLOW}$*${NC}"
 }
 
 run_root() {
@@ -42,10 +48,51 @@ download_file() {
     curl -fL --retry 3 --retry-delay 1 -o "${destination}" "${url}"
 }
 
+extract_tag_from_release_json() {
+    sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+extract_tag_from_release_url() {
+    sed -n 's#.*/tag/\([^/?#]*\).*#\1#p' | head -n 1
+}
+
 resolve_latest_tag() {
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-        | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
-        | head -n 1
+    local tag=""
+
+    tag="$(
+        curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "User-Agent: kiki-installer" \
+            "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+            | extract_tag_from_release_json || true
+    )"
+    if [ -n "${tag}" ]; then
+        printf '%s\n' "${tag}"
+        return
+    fi
+
+    tag="$(
+        curl -fsSL -o /dev/null -w '%{url_effective}' \
+            "https://github.com/${REPO}/releases/latest" 2>/dev/null \
+            | extract_tag_from_release_url || true
+    )"
+    if [ -n "${tag}" ]; then
+        printf '%s\n' "${tag}"
+        return
+    fi
+
+    tag="$(
+        curl -fsSL -o /dev/null -w '%{url_effective}' \
+            "$(proxy_url "https://github.com/${REPO}/releases/latest")" 2>/dev/null \
+            | extract_tag_from_release_url || true
+    )"
+    if [ -n "${tag}" ]; then
+        printf '%s\n' "${tag}"
+        return
+    fi
+
+    log_warn "无法自动获取最新 release，回退到内置版本 ${DEFAULT_KIKI_TAG}"
+    printf '%s\n' "${DEFAULT_KIKI_TAG}"
 }
 
 detect_libc() {
@@ -128,7 +175,7 @@ if [ -z "${KIKI_TAG}" ]; then
 fi
 
 if [ -z "${KIKI_TAG}" ]; then
-    log_error "无法自动获取最新 KiKi 版本号，请手动设置 KIKI_TAG，例如 KIKI_TAG=v0.2.0。"
+    log_error "无法自动获取最新 KiKi 版本号，请手动设置 KIKI_TAG，例如 KIKI_TAG=${DEFAULT_KIKI_TAG}。"
     exit 1
 fi
 
