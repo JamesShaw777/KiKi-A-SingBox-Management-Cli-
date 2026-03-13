@@ -14,6 +14,10 @@ KIKI_TAG="${KIKI_TAG:-}"
 KIKI_TARGET="${KIKI_TARGET:-}"
 KIKI_LIBC="${KIKI_LIBC:-}"
 DEFAULT_KIKI_TAG="${DEFAULT_KIKI_TAG:-v0.2.0}"
+URL_SCHEME="https"
+GITHUB_HOST="github.com"
+GITHUB_API_HOST="api.github.com"
+RAW_HOST="raw.githubusercontent.com"
 
 log_info() {
     echo -e "${GREEN}$*${NC}"
@@ -40,6 +44,12 @@ run_root() {
 
 proxy_url() {
     printf '%s%s' "${GITHUB_PROXY}" "$1"
+}
+
+build_url() {
+    local host="$1"
+    local path="$2"
+    printf '%s://%s%s' "${URL_SCHEME}" "${host}" "${path}"
 }
 
 download_file() {
@@ -88,7 +98,7 @@ resolve_latest_tag() {
         curl -fsSL \
             -H "Accept: application/vnd.github+json" \
             -H "User-Agent: kiki-installer" \
-            "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+            "$(build_url "${GITHUB_API_HOST}" "/repos/${REPO}/releases/latest")" 2>/dev/null \
             | extract_tag_from_release_json || true
     )"
     if [ -n "${tag}" ]; then
@@ -98,7 +108,7 @@ resolve_latest_tag() {
 
     tag="$(
         curl -fsSL -o /dev/null -w '%{url_effective}' \
-            "https://github.com/${REPO}/releases/latest" 2>/dev/null \
+            "$(build_url "${GITHUB_HOST}" "/${REPO}/releases/latest")" 2>/dev/null \
             | extract_tag_from_release_url || true
     )"
     if [ -n "${tag}" ]; then
@@ -108,7 +118,7 @@ resolve_latest_tag() {
 
     tag="$(
         curl -fsSL -o /dev/null -w '%{url_effective}' \
-            "$(proxy_url "https://github.com/${REPO}/releases/latest")" 2>/dev/null \
+            "$(proxy_url "$(build_url "${GITHUB_HOST}" "/${REPO}/releases/latest")")" 2>/dev/null \
             | extract_tag_from_release_url || true
     )"
     if [ -n "${tag}" ]; then
@@ -223,10 +233,10 @@ fi
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEMP_DIR}"' EXIT
 
-SINGBOX_URL="https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${FILENAME}"
-CONFIG_URL="https://raw.githubusercontent.com/${REPO}/${KIKI_TAG}/config.json"
+SINGBOX_URL="$(build_url "${GITHUB_HOST}" "/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${FILENAME}")"
+CONFIG_URL="$(build_url "${RAW_HOST}" "/${REPO}/${KIKI_TAG}/config.json")"
 KIKI_ARCHIVE="kiki-${KIKI_TAG}-${KIKI_TARGET}.tar.gz"
-KIKI_URL="https://github.com/${REPO}/releases/download/${KIKI_TAG}/${KIKI_ARCHIVE}"
+KIKI_URL="$(build_url "${GITHUB_HOST}" "/${REPO}/releases/download/${KIKI_TAG}/${KIKI_ARCHIVE}")"
 
 log_info "正在从 GitHub 下载 sing-box: ${FILENAME}"
 download_file "${TEMP_DIR}/${FILENAME}" $(prefer_proxy_urls "${SINGBOX_URL}")
