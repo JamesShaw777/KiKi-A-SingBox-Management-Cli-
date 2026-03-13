@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "kiki")]
-#[command(version = "1.0", about = "一个简单的 singbox 管理工具")]
+#[command(version, about = "一个简单的 singbox 管理工具")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

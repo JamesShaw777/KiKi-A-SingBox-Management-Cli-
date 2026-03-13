@@ -6,7 +6,7 @@ KiKi is a lightweight Rust-based Linux CLI that simplifies daily `sing-box` mana
 
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.1.0-green.svg)](https://github.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/releases)
+[![Release](https://img.shields.io/badge/release-v0.2.0-green.svg)](https://github.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/releases)
 
 ---
 
@@ -22,7 +22,15 @@ KiKi is a lightweight Rust-based Linux CLI that simplifies daily `sing-box` mana
 Run the following to install `sing-box` (v1.12.17) and KiKi:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo bash
+curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo bash
+```
+
+The installer auto-detects `x86_64`, `aarch64`, `armv7` and `gnu`/`musl`, then downloads the matching release asset.
+
+If you want to pin a release or force a target explicitly:
+
+```bash
+curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo env KIKI_TAG=v0.2.0 KIKI_TARGET=x86_64-unknown-linux-musl bash
 ```
 
 ## Usage

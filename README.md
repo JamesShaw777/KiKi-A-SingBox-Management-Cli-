@@ -6,7 +6,7 @@
 
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.1.0-green.svg)](https://github.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/releases)
+[![Release](https://img.shields.io/badge/release-v0.2.0-green.svg)](https://github.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/releases)
 
 ---
 
@@ -22,7 +22,15 @@
 在终端执行以下命令，即可完成 `sing-box` (v1.12.17) 与 **KiKi** 的自动化安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo bash
+curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo bash
+```
+
+安装脚本会自动识别 `x86_64`、`aarch64`、`armv7` 以及 `gnu`、`musl`，并下载匹配的 release 产物。
+
+如果你需要手动指定版本或目标平台，也可以这样执行：
+
+```bash
+curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo env KIKI_TAG=v0.2.0 KIKI_TARGET=x86_64-unknown-linux-musl bash
 ```
 
 ## 📖 使用指南

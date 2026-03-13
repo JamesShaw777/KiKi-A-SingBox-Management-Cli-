@@ -1,38 +1,60 @@
-name: Release kiki binary (Linux only)
+name: Release kiki binaries
 
 on:
   push:
     tags:
-      - "v*"             # 只在 v開頭的 tag 觸發 release
+      - "v*"
 
 permissions:
-  contents: write        # 必要權限：才能建立/更新 Release + 上傳檔案
+  contents: write
 
 jobs:
-  build-and-upload:
+  create-release:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain (with musl target)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Create release
+        uses: taiki-e/create-gh-release-action@v1
         with:
-          targets: x86_64-unknown-linux-musl
+          branch: main
+          title: $tag
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build release binary (musl)
-        run: cargo build --release --target x86_64-unknown-linux-musl --verbose
-
-      - name: Strip binary (減小檔案大小，可選但推薦)
-        run: |
-          strip --strip-all target/x86_64-unknown-linux-musl/release/kiki || true
-
-      - name: Upload binary to GitHub Release
+  upload-assets:
+    needs: create-release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            build-tool: cargo-zigbuild
+          - target: x86_64-unknown-linux-musl
+            build-tool: cargo-zigbuild
+          - target: aarch64-unknown-linux-gnu
+            build-tool: cargo-zigbuild
+          - target: aarch64-unknown-linux-musl
+            build-tool: cargo-zigbuild
+          - target: armv7-unknown-linux-gnueabihf
+            build-tool: cargo-zigbuild
+          - target: armv7-unknown-linux-musleabihf
+            build-tool: cargo-zigbuild
+    name: ${{ matrix.target }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build and upload release asset
         uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: kiki
-          target: x86_64-unknown-linux-musl
-          archive: tar.gz              # 壓成 tar.gz（推薦），也可改 zip
-          checksum: sha256       # 自動產生 .sha256sum 檔案
+          target: ${{ matrix.target }}
+          build-tool: ${{ matrix.build-tool }}
+          archive: $bin-$tag-$target
+          tar: unix
+          zip: none
+          locked: true
+          checksum: sha256
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,14 +1,12 @@
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 
 pub fn execute() {
     println!("🔍 开始系统环境检查...");
 
     // 1. 检查是否安装了 sing-box
     // 我们尝试运行 sing-box version 来确认它是否在系统路径中
-    let singbox_check = Command::new("sing-box")
-        .arg("version")
-        .output();
+    let singbox_check = Command::new("sing-box").arg("version").output();
 
     if singbox_check.is_err() {
         println!("❌ 未检测到 sing-box 程序。");

@@ -2,10 +2,9 @@ use std::process::Command;
 
 pub fn execute(follow: bool) {
     let mut cmd = Command::new("journalctl");
-    
-    cmd.arg("-u").arg("sing-box")
-        .arg("--output").arg("cat");
-    
+
+    cmd.arg("-u").arg("sing-box").arg("--output").arg("cat");
+
     if follow {
         println!("📺 实时跟踪 sing-box 日志（按 Ctrl+C 退出）...");
         cmd.arg("-f");
@@ -13,9 +12,9 @@ pub fn execute(follow: bool) {
         println!("📖 显示最近的 sing-box 日志...");
         cmd.arg("-e");
     }
-    
+
     let status = cmd.status();
-    
+
     match status {
         Ok(s) if s.success() => {
             if !follow {

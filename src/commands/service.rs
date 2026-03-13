@@ -28,13 +28,10 @@ pub fn disable() {
 }
 
 #[allow(dead_code)]
-pub fn kill(){
+pub fn kill() {
     println!("💀 正在强制终止 sing-box 进程...");
-    let status = Command::new("pkill")
-        .arg("-f")
-        .arg("sing-box")
-        .status();
-    
+    let status = Command::new("pkill").arg("-f").arg("sing-box").status();
+
     match status {
         Ok(s) if s.success() => println!("=> 强制终止成功"),
         Ok(s) => eprintln!("=> 强制终止失败，退出码: {}", s),
@@ -47,7 +44,7 @@ fn execute_systemctl(action: &str) {
     let status = Command::new("systemctl") // 确保有双引号
         .args([action, "sing-box"])
         .status();
-    
+
     match status {
         Ok(s) if s.success() => println!("=> {} 成功", action),
         Ok(s) => eprintln!("=> {} 失败，退出码: {}", action, s),
