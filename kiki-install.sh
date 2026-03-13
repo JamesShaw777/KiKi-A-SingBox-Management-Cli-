@@ -43,9 +43,34 @@ proxy_url() {
 }
 
 download_file() {
-    local url="$1"
-    local destination="$2"
-    curl -fL --retry 3 --retry-delay 1 -o "${destination}" "${url}"
+    local destination="$1"
+    shift
+
+    local url
+    local last_error=0
+    for url in "$@"; do
+        if [ -z "${url}" ]; then
+            continue
+        fi
+
+        if curl -fL --retry 3 --retry-delay 1 -o "${destination}" "${url}"; then
+            return 0
+        fi
+
+        last_error=$?
+        log_warn "下载失败，尝试下一个地址: ${url}"
+    done
+
+    return "${last_error:-1}"
+}
+
+prefer_proxy_urls() {
+    local direct_url="$1"
+    if [ -n "${GITHUB_PROXY}" ]; then
+        printf '%s\n%s\n' "$(proxy_url "${direct_url}")" "${direct_url}"
+    else
+        printf '%s\n' "${direct_url}"
+    fi
 }
 
 extract_tag_from_release_json() {
@@ -198,13 +223,13 @@ fi
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEMP_DIR}"' EXIT
 
-SINGBOX_URL="$(proxy_url "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${FILENAME}")"
-CONFIG_URL="$(proxy_url "https://raw.githubusercontent.com/${REPO}/${KIKI_TAG}/config.json")"
+SINGBOX_URL="https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${FILENAME}"
+CONFIG_URL="https://raw.githubusercontent.com/${REPO}/${KIKI_TAG}/config.json"
 KIKI_ARCHIVE="kiki-${KIKI_TAG}-${KIKI_TARGET}.tar.gz"
-KIKI_URL="$(proxy_url "https://github.com/${REPO}/releases/download/${KIKI_TAG}/${KIKI_ARCHIVE}")"
+KIKI_URL="https://github.com/${REPO}/releases/download/${KIKI_TAG}/${KIKI_ARCHIVE}"
 
 log_info "正在从 GitHub 下载 sing-box: ${FILENAME}"
-download_file "${SINGBOX_URL}" "${TEMP_DIR}/${FILENAME}"
+download_file "${TEMP_DIR}/${FILENAME}" $(prefer_proxy_urls "${SINGBOX_URL}")
 
 log_info "正在安装 sing-box..."
 run_root "${PKG_INSTALL_CMD[@]}" "${TEMP_DIR}/${FILENAME}"
@@ -213,10 +238,11 @@ log_info "正在准备配置目录..."
 run_root mkdir -p /etc/sing-box /etc/kiki
 
 log_info "正在下载配置文件..."
-run_root curl -fL --retry 3 --retry-delay 1 -o /etc/sing-box/config.json "${CONFIG_URL}"
+download_file "${TEMP_DIR}/config.json" $(prefer_proxy_urls "${CONFIG_URL}")
+run_root install -m 0644 "${TEMP_DIR}/config.json" /etc/sing-box/config.json
 
 log_info "正在下载 KiKi 工具..."
-download_file "${KIKI_URL}" "${TEMP_DIR}/${KIKI_ARCHIVE}"
+download_file "${TEMP_DIR}/${KIKI_ARCHIVE}" $(prefer_proxy_urls "${KIKI_URL}")
 
 mkdir -p "${TEMP_DIR}/kiki-extract"
 tar -xzf "${TEMP_DIR}/${KIKI_ARCHIVE}" -C "${TEMP_DIR}/kiki-extract"
