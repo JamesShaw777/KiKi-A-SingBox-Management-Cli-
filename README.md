@@ -1,18 +1,19 @@
-# KiKi - A Sing-Box Management CLI
+# KiKi
 
 [English](README.en.md) | 简体中文
 
-🚀 **KiKi** 是一个用 Rust 编写的轻量级 Linux 命令行工具，旨在简化 `sing-box` 的日常管理。它提供了快速解析节点、环境诊断以及服务控制功能。
+KiKi 是一个面向 Linux 的 `sing-box` 命令行管理工具，提供节点导入、配置校验与服务控制能力。
 
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.2.0-green.svg)](https://github.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/releases)
+[![Release](https://img.shields.io/github/v/release/JamesShaw777/kiki)](https://github.com/JamesShaw777/kiki/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/JamesShaw777/kiki?style=social)](https://github.com/JamesShaw777/kiki/stargazers)
 
 ---
 
 ## ✨ 功能特性
 
-- **一键设点**：支持解析 `ss://` 链接并自动更新 `sing-box` 配置文件。
+- **多协议节点导入**：支持 `ss://`、`vmess://`、`trojan://`、`vless://`、`hysteria2://`、`hy2://`、`tuic://`、`anytls://`。
 - **环境诊断**：自动检查 `sing-box` 是否安装、配置路径是否正确以及 JSON 语法校验。
 - **服务管理**：集成 Systemd，通过简单命令启动、停止或重启服务。
 - **中国境内优化**：默认配套针对国内直连、国外代理分流优化的配置方案。
@@ -22,15 +23,17 @@
 在终端执行以下命令，即可完成 `sing-box` (v1.12.17) 与 **KiKi** 的自动化安装：
 
 ```bash
-curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo bash
+curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/kiki/main/kiki-install.sh | sudo bash
 ```
+
+如果你当前已经是 `root`，将 `sudo bash` 改为 `bash` 即可。
 
 安装脚本会自动识别 `x86_64`、`aarch64`、`armv7` 以及 `gnu`、`musl`，并下载匹配的 release 产物。
 
 如果你需要手动指定版本或目标平台，也可以这样执行：
 
 ```bash
-curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/KiKi-A-SingBox-Management-Cli-/main/kiki-install.sh | sudo env KIKI_TAG=v0.2.0 KIKI_TARGET=x86_64-unknown-linux-musl bash
+curl -fsSL https://cdn.gh-proxy.org/https://raw.githubusercontent.com/JamesShaw777/kiki/main/kiki-install.sh | sudo env KIKI_TAG=v0.2.0 KIKI_TARGET=x86_64-unknown-linux-musl bash
 ```
 
 ## 📖 使用指南
@@ -142,6 +145,18 @@ KiKi 默认管理的配置文件位于：`/etc/sing-box/config.json`。 其内�
 
 - **DNS 分流**：国内使用阿里云 DNS，国外使用 Google DNS (DoT)。
 - **路由规则**：自动识别 `geoip-cn` 和 `geosite-cn` 实现国内流量直连。
+
+## 致谢
+
+KiKi 基于 [`sing-box`](https://github.com/SagerNet/sing-box) 的配置体系与协议能力构建，相关字段映射、节点解析行为与配置校验均以 `sing-box` 官方文档和实际实现为参考。
+
+感谢 `sing-box` 项目及其维护者提供稳定的代理内核与完善的文档支持。
+
+本项目是独立的社区工具，并非 `sing-box` 官方项目。
+
+## 支持项目
+
+如果 KiKi 对你有帮助，欢迎在 GitHub 上点一个 `Star`。这能让项目更容易被看到，也能帮助后续维护持续推进。
 
 ## 🤝 贡献与反馈
 

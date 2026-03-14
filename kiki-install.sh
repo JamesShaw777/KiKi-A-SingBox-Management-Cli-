@@ -7,7 +7,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-REPO="JamesShaw777/KiKi-A-SingBox-Management-Cli-"
+REPO="JamesShaw777/kiki"
 SINGBOX_VERSION="${SINGBOX_VERSION:-1.12.17}"
 GITHUB_PROXY="${GITHUB_PROXY:-https://cdn.gh-proxy.org/}"
 KIKI_TAG="${KIKI_TAG:-}"
