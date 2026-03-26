@@ -197,6 +197,15 @@ fn build_tls_config(
 ) -> Option<Value> {
     let mut tls_config = json!({});
     let mut has_fields = false;
+    let enable_utls = fingerprint
+        .filter(|value| !value.is_empty())
+        .is_some()
+        || reality_public_key
+            .filter(|value| !value.is_empty())
+            .is_some()
+        || reality_short_id
+            .filter(|value| !value.is_empty())
+            .is_some();
 
     if enabled {
         tls_config["enabled"] = Value::Bool(true);
@@ -220,11 +229,12 @@ fn build_tls_config(
         }
     }
 
-    if let Some(fingerprint) = fingerprint.filter(|value| !value.is_empty()) {
-        tls_config["utls"] = json!({
-            "enabled": true,
-            "fingerprint": fingerprint
-        });
+    if enable_utls {
+        let mut utls_config = json!({ "enabled": true });
+        if let Some(fingerprint) = fingerprint.filter(|value| !value.is_empty()) {
+            utls_config["fingerprint"] = Value::String(fingerprint.to_string());
+        }
+        tls_config["utls"] = utls_config;
         has_fields = true;
     }
 
@@ -1495,6 +1505,24 @@ mod tests {
         assert_eq!(outbound["tls"]["reality"]["enabled"], true);
         assert_eq!(outbound["tls"]["reality"]["short_id"], "0123456789abcdef");
         assert_eq!(outbound["packet_encoding"], "xudp");
+    }
+
+    #[test]
+    fn vless_reality_without_fingerprint_still_enables_utls() {
+        let url = "vless://44444444-4444-4444-4444-444444444444@203.0.113.10:443/?type=tcp&encryption=none&sni=reality.example.com&security=reality&pbk=4TnH0pyX1Jf8V8wA8rV5b6lOz7lLJtQ4QWlL4o4jP8Q&sid=0123456789abcdef#Example";
+
+        let config = run_and_check("vless-reality-no-fp", url);
+        let outbound = proxy_outbound(&config);
+        assert_eq!(outbound["type"], "vless");
+        assert_eq!(outbound["tls"]["enabled"], true);
+        assert_eq!(outbound["tls"]["server_name"], "reality.example.com");
+        assert_eq!(outbound["tls"]["utls"]["enabled"], true);
+        assert_eq!(outbound["tls"]["reality"]["enabled"], true);
+        assert_eq!(
+            outbound["tls"]["reality"]["public_key"],
+            "4TnH0pyX1Jf8V8wA8rV5b6lOz7lLJtQ4QWlL4o4jP8Q"
+        );
+        assert_eq!(outbound["tls"]["reality"]["short_id"], "0123456789abcdef");
     }
 
     #[test]
